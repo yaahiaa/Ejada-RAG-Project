@@ -1,0 +1,14 @@
+[project]
+name = "ejada-rag-project"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "chromadb>=1.5.9",
+    "groq>=1.5.0",
+    "pymupdf>=1.28.0",
+    "python-dotenv>=1.2.2",
+    "sentence-transformers>=5.6.0",
+    "streamlit>=1.59.2",
+]
