@@ -176,38 +176,38 @@ def retrieve_chunks(question: str, top_k: int = 4) -> list[dict]:
 
     return retrieved_chunks
 
-def main():
-    pdf_path = "books/Harry_Potter_and_the_Sorcerer's_Stone.pdf"
+# def main():
+#     pdf_path = "books/Harry_Potter_and_the_Sorcerer's_Stone.pdf"
 
-    try:
-        indexed_chunks = index_pdf(pdf_path)
-        print(f"\nCollection contains {collection.count()} chunks.")
+#     try:
+#         indexed_chunks = index_pdf(pdf_path)
+#         print(f"\nCollection contains {collection.count()} chunks.")
 
-        while True:
-            question = input(
-                "\nAsk a question about the book "
-                "(or type 'exit' to quit): "
-            ).strip()
+#         while True:
+#             question = input(
+#                 "\nAsk a question about the book "
+#                 "(or type 'exit' to quit): "
+#             ).strip()
 
-            if question.lower() in {"exit", "quit"}:
-                print("Goodbye.")
-                break
+#             if question.lower() in {"exit", "quit"}:
+#                 print("Goodbye.")
+#                 break
 
-            results = retrieve_chunks(question, top_k=4)
+#             results = retrieve_chunks(question, top_k=4)
 
-            print("\nMost relevant chunks:\n")
+#             print("\nMost relevant chunks:\n")
 
-            for index, result in enumerate(results, start=1):
-                print(f"Result {index}")
-                print(f"Source: {result['source']}")
-                print(f"Page: {result['page']}")
-                print(f"Distance: {result['distance']:.4f}")
-                print(f"Content:\n{result['content']}")
-                print("-" * 70)
+#             for index, result in enumerate(results, start=1):
+#                 print(f"Result {index}")
+#                 print(f"Source: {result['source']}")
+#                 print(f"Page: {result['page']}")
+#                 print(f"Distance: {result['distance']:.4f}")
+#                 print(f"Content:\n{result['content']}")
+#                 print("-" * 70)
 
-    except Exception as error:
-        print(f"Error: {error}")
+#     except Exception as error:
+#         print(f"Error: {error}")
 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
