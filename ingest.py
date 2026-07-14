@@ -137,6 +137,44 @@ def index_pdf(file_path: str) -> int:
 
     return len(chunks)
 
+def retrieve_chunks(question: str, top_k: int = 4) -> list[dict]:
+    if not question.strip():
+        raise ValueError("Question cannot be empty.")
+
+    collection_size = collection.count()
+
+    if collection_size == 0:
+        raise ValueError("No PDF has been indexed yet.")
+
+    top_k = min(top_k, collection_size)
+
+    question_embedding = embedding_model.encode(
+        question,
+        normalize_embeddings=True
+    ).tolist()
+
+    results = collection.query(
+        query_embeddings=[question_embedding],
+        n_results=top_k,
+        include=["documents", "metadatas", "distances"]
+    )
+
+    retrieved_chunks = []
+
+    for document, metadata, distance in zip(
+        results["documents"][0],
+        results["metadatas"][0],
+        results["distances"][0]
+    ):
+        retrieved_chunks.append({
+            "content": document,
+            "page": metadata["page"],
+            "source": metadata["source"],
+            "chunk_id": metadata["chunk_id"],
+            "distance": distance
+        })
+
+    return retrieved_chunks
 
 def main():
     pdf_path = "books/Harry_Potter_and_the_Sorcerer's_Stone.pdf"
@@ -144,6 +182,28 @@ def main():
     try:
         indexed_chunks = index_pdf(pdf_path)
         print(f"\nCollection contains {collection.count()} chunks.")
+
+        while True:
+            question = input(
+                "\nAsk a question about the book "
+                "(or type 'exit' to quit): "
+            ).strip()
+
+            if question.lower() in {"exit", "quit"}:
+                print("Goodbye.")
+                break
+
+            results = retrieve_chunks(question, top_k=4)
+
+            print("\nMost relevant chunks:\n")
+
+            for index, result in enumerate(results, start=1):
+                print(f"Result {index}")
+                print(f"Source: {result['source']}")
+                print(f"Page: {result['page']}")
+                print(f"Distance: {result['distance']:.4f}")
+                print(f"Content:\n{result['content']}")
+                print("-" * 70)
 
     except Exception as error:
         print(f"Error: {error}")
