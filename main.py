@@ -1,11 +1,18 @@
 from ingest import index_pdf
 from rag import ask_book
+import os
 
 
 def main():
-    pdf_path = "books/Harry_Potter_and_the_Sorcerer's_Stone.pdf"
+    BOOKS_DIR = "books"
 
-    index_pdf(pdf_path)
+    pdf_files = [
+        os.path.join(BOOKS_DIR, file)
+        for file in os.listdir(BOOKS_DIR)
+        if file.lower().endswith(".pdf")
+    ]
+
+    index_pdf(pdf_files[0])  
 
     while True:
         question = input(
