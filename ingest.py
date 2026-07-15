@@ -7,12 +7,17 @@ import hashlib
 from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
 
+load_dotenv()
 
-embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+embedding_model = SentenceTransformer(os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"))
 
-chroma_client = chromadb.PersistentClient(path="chroma_db")
+chroma_client = chromadb.PersistentClient(path=os.getenv("CHROMA_DB_PATH", "chroma_db"))
 
 collection = chroma_client.get_or_create_collection(name="books",metadata={"hnsw:space": "cosine"})
+
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 800))
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 100))
+TOP_K = int(os.getenv("TOP_K", 4))
 
 def extract_text(file_path: str) -> list[dict]:
     pages = []
@@ -29,7 +34,7 @@ def extract_text(file_path: str) -> list[dict]:
 
     return pages
 
-def chunk_text(pages: list[dict],chunk_size: int = 800,overlap: int = 100) -> list[dict]:
+def chunk_text(pages: list[dict],chunk_size: int = CHUNK_SIZE,overlap: int = CHUNK_OVERLAP) -> list[dict]:
    
     chunks = []
     chunk_id = 0
@@ -137,7 +142,7 @@ def index_pdf(file_path: str) -> int:
 
     return len(chunks)
 
-def retrieve_chunks(question: str, top_k: int = 4) -> list[dict]:
+def retrieve_chunks(question: str, top_k: int = TOP_K) -> list[dict]:
     if not question.strip():
         raise ValueError("Question cannot be empty.")
 

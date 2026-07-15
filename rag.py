@@ -9,11 +9,11 @@ from sentence_transformers import SentenceTransformer
 load_dotenv()
 
 embedding_model = SentenceTransformer(
-    "sentence-transformers/all-MiniLM-L6-v2"
+    os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
 )
 
 chroma_client = chromadb.PersistentClient(
-    path="chroma_db"
+    path=os.getenv("CHROMA_DB_PATH", "chroma_db")
 )
 
 collection = chroma_client.get_or_create_collection(
@@ -25,8 +25,12 @@ groq_client = Groq(
     api_key=os.getenv("GROQ_API_KEY")
 )
 
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 800))
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 100))
+TOP_K = int(os.getenv("TOP_K", 4))
 
-def retrieve_chunks(question: str, top_k: int = 4) -> list[dict]:
+
+def retrieve_chunks(question: str, top_k: int = TOP_K) -> list[dict]:
     if not question.strip():
         raise ValueError("Question cannot be empty.")
 
@@ -106,7 +110,7 @@ QUESTION:
 """
 
     response = groq_client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
         temperature=0,
         messages=[
             {
@@ -123,7 +127,7 @@ QUESTION:
     return response.choices[0].message.content
 
 
-def ask_book(question: str,top_k: int = 4) -> dict:
+def ask_book(question: str,top_k: int = TOP_K) -> dict:
 
     retrieved_chunks = retrieve_chunks(
         question=question,
