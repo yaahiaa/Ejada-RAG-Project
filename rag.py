@@ -12,9 +12,9 @@ class Rag:
     def __init__(self):
         self.embedding_model = SentenceTransformer(os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"))
         self.chroma_client = chromadb.PersistentClient(path=os.getenv("CHROMA_DB_PATH", "chroma_db"))
-        self.collection = self.chroma_client.get_or_create_collection(name="books",metadata={"hnsw:space": "cosine"})
-        self.chunk_size = int(os.getenv("CHUNK_SIZE", 800))
-        self.chunk_overlap = int(os.getenv("CHUNK_OVERLAP", 100))
+        collection_name = os.getenv("COLLECTION_NAME")
+        collection_metadata = os.getenv("COLLECTION_METADATA")
+        self.collection = self.chroma_client.get_or_create_collection(name=collection_name, metadata=collection_metadata)
         self.top_k = int(os.getenv("TOP_K", 4))
 
         self.llm_service = LLMService()

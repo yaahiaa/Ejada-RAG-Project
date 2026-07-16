@@ -1,11 +1,16 @@
+from dotenv import load_dotenv
+
 from ingest import Ingestion
 from rag import Rag
 import os
 
+load_dotenv()
 
 def find_pdfs() -> list[str]:
+
+    BOOK_DIR = os.getenv("BOOK_DIR")
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    books_dir = os.path.join(base_dir, "books")
+    books_dir = os.path.join(base_dir, BOOK_DIR)
 
     if not os.path.exists(books_dir):
         raise FileNotFoundError("The books directory does not exist.")
