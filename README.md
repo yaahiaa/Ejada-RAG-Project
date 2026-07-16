@@ -31,9 +31,11 @@ The project implements the RAG pipeline from scratch without using LangChain.
 
 ```text
 .
+├── main.py         # main method file
 ├── app.py          # Streamlit interface
 ├── ingest.py       # PDF extraction, chunking and indexing
-├── rag.py          # Retrieval and answer generation
+├── rag.py          # Retrieval
+├── llm_service.py  # Answer generation
 ├── books/
 ├── chroma_db/
 ├── .env
@@ -61,8 +63,8 @@ The project implements the RAG pipeline from scratch without using LangChain.
 Clone the repository:
 
 ```bash
-git clone <repository-url>
-cd <repository-folder>
+git clone https://github.com/<YOUR_USER>/Ejada-RAG-Project.git
+cd <YOUR_USER>/Ejada-RAG-Project
 ```
 
 Install the project dependencies:
@@ -74,7 +76,26 @@ uv sync
 Create a `.env` file in the project root:
 
 ```env
+# Groq
 GROQ_API_KEY=your_groq_api_key
+GROQ_MODEL=llama-3.3-70b-versatile
+
+# Embedding
+EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+
+# ChromaDB
+CHROMA_DB_PATH=chroma_db
+COLLECTION_NAME=books
+
+# Chunking
+CHUNK_SIZE=800
+CHUNK_OVERLAP=100
+
+# Retrieval
+TOP_K=4
+
+# Books
+BOOKS_DIR=books
 ```
 
 Run the application:
@@ -105,6 +126,10 @@ Splits each page into overlapping text chunks while maintaining page metadata. T
 
 Processes a PDF by extracting text, creating chunks, generating embeddings, and storing them in ChromaDB along with the associated metadata.
 
+### `index_pdfs(file_paths)`
+
+Indexes multiple PDF files by processing each document individually and storing all chunks in the same ChromaDB collection.
+
 ### `retrieve_chunks(question, top_k)`
 
 Embeds the user's question, performs a semantic similarity search in ChromaDB, and retrieves the most relevant document chunks.
@@ -117,6 +142,18 @@ Builds a prompt using the retrieved context and sends it to the Groq LLM to gene
 
 High-level function that combines retrieval and answer generation, returning both the generated response and the supporting source chunks.
 
+### `find_pdfs()`
+
+Scans the configured books directory and returns the paths of all available PDF files for indexing.
+
+### `run_chat(rag_assistant)`
+
+Starts the command-line interaction loop, accepts user questions, and displays the generated answers along with their supporting sources.
+
+### `run_application()`
+
+Initializes the application by locating the available books, indexing them, creating the required services, and launching the chat interface.
+
 ## Project in Action
 
 
@@ -126,6 +163,5 @@ High-level function that combines retrieval and answer generation, returning bot
 ![Q2](images/rag2.png)
 
 
-![Q3](images/rag3.png)
 
 ---

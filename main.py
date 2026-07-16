@@ -27,7 +27,27 @@ def find_pdfs() -> list[str]:
         )
     return pdf_files
 
-def run_chat(rag: Rag) -> None:
+def select_book(pdf_files: list[str]) -> str:
+    print("\nAvailable books:")
+
+    for index, pdf_path in enumerate(pdf_files, start=1):
+        print(f"{index}. {os.path.basename(pdf_path)}")
+
+    while True:
+        choice = input("\nSelect a book number: ").strip()
+
+        if not choice.isdigit():
+            print("Please enter a valid number.")
+            continue
+
+        selected_index = int(choice) - 1
+
+        if 0 <= selected_index < len(pdf_files):
+            return os.path.basename(pdf_files[selected_index])
+
+        print("Selection is out of range.")
+
+def run_chat(rag: Rag, book_name: str) -> None:
     while True:
         question = input(
             "\nAsk a question about the book "
@@ -43,7 +63,7 @@ def run_chat(rag: Rag) -> None:
             continue
 
         try:
-            result = rag.ask_book(question)
+            result = rag.ask_book(question=question, book_name=book_name)
 
             print("\nAnswer:\n")
             print(result["answer"])
@@ -66,7 +86,9 @@ def run_application() -> None:
     rag = Rag()
 
     chunk_count = ingest.index_pdfs(pdf_paths)
-    run_chat(rag)
+
+    selected_book = select_book(pdf_paths)
+    run_chat(rag, book_name=selected_book)
 
 def main():
     try:

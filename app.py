@@ -1,77 +1,350 @@
-import tempfile
-from pathlib import Path
+import os
 
 import streamlit as st
+from dotenv import load_dotenv
 
-from ingest import index_pdf
-from rag import ask_book
+from ingest import Ingestion
+from rag import Rag
 
+
+load_dotenv()
+
+
+# ---------------------------------------------------------
+# Streamlit page configuration
+# ---------------------------------------------------------
 
 st.set_page_config(
-    page_title="Chat with a Book",
+    page_title="Chat with Your Books",
     page_icon="📚",
-    layout="wide"
+    layout="centered"
 )
 
-st.title("📚 Chat with a Book")
 
-st.write(
-    "Upload a PDF, let it be indexed, then ask questions about its content."
+# ---------------------------------------------------------
+# Project paths
+# ---------------------------------------------------------
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+BOOKS_DIR_NAME = os.getenv("BOOKS_DIR", "books")
+
+BOOKS_DIR = (
+    BOOKS_DIR_NAME
+    if os.path.isabs(BOOKS_DIR_NAME)
+    else os.path.join(BASE_DIR, BOOKS_DIR_NAME)
 )
 
-# -------------------------
-# Upload PDF
-# -------------------------
+os.makedirs(BOOKS_DIR, exist_ok=True)
 
-uploaded_file = st.file_uploader(
-    "Upload a PDF",
-    type=["pdf"]
-)
 
-if uploaded_file is not None:
+# ---------------------------------------------------------
+# Load backend services
+# ---------------------------------------------------------
 
-    temp_dir = Path("temp")
-    temp_dir.mkdir(exist_ok=True)
+@st.cache_resource
+def load_services() -> tuple[Ingestion, Rag]:
+    """
+    Create and cache the ingestion and RAG services.
 
-    pdf_path = temp_dir / uploaded_file.name
+    Streamlit reruns the script after every interaction.
+    Caching prevents the embedding model and database clients
+    from being reloaded on every rerun.
+    """
 
-    with open(pdf_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
+    ingestion = Ingestion()
+    rag = Rag()
 
-    if st.button("Index Book"):
+    return ingestion, rag
 
-        with st.spinner("Indexing book..."):
 
-            chunk_count = index_pdf(str(pdf_path))
+ingestion, rag = load_services()
 
-        st.success(f"Indexed {chunk_count} chunks.")
 
-# -------------------------
-# Ask Question
-# -------------------------
+# ---------------------------------------------------------
+# Helper functions
+# ---------------------------------------------------------
 
-question = st.text_input("Ask a question about the book")
+def find_books() -> list[str]:
+    """
+    Return the names of all PDF files in the books directory.
+    """
 
-if st.button("Ask"):
+    books = [
+        file_name
+        for file_name in os.listdir(BOOKS_DIR)
+        if file_name.lower().endswith(".pdf")
+        and os.path.isfile(os.path.join(BOOKS_DIR, file_name))
+    ]
 
-    if not question.strip():
-        st.warning("Please enter a question.")
+    return sorted(books)
+
+
+def save_uploaded_books(uploaded_files) -> list[str]:
+    """
+    Save uploaded PDF files into the local books directory.
+
+    Returns the full paths of the saved files.
+    """
+
+    saved_paths = []
+
+    for uploaded_file in uploaded_files:
+        safe_file_name = os.path.basename(uploaded_file.name)
+
+        file_path = os.path.join(
+            BOOKS_DIR,
+            safe_file_name
+        )
+
+        with open(file_path, "wb") as pdf_file:
+            pdf_file.write(uploaded_file.getbuffer())
+
+        saved_paths.append(file_path)
+
+    return saved_paths
+
+
+def index_uploaded_books(file_paths: list[str]) -> list[dict]:
+    """
+    Index all provided PDF files and return the indexing results.
+    """
+
+    if not file_paths:
+        return []
+
+    return ingestion.index_pdfs(file_paths)
+
+
+def clear_chat() -> None:
+    """
+    Remove all messages from the current conversation.
+    """
+
+    st.session_state.messages = []
+
+
+def display_sources(sources: list[dict]) -> None:
+    """
+    Display retrieved book passages below an assistant answer.
+    """
+
+    if not sources:
+        return
+
+    with st.expander("View retrieved sources"):
+        for index, source in enumerate(sources, start=1):
+            st.markdown(
+                f"**Source {index}: "
+                f"{source['source']} — Page {source['page']}**"
+            )
+
+            st.caption(
+                f"Similarity distance: "
+                f"{source['distance']:.4f}"
+            )
+
+            st.write(source["content"])
+
+            if index < len(sources):
+                st.divider()
+
+
+def display_chat_history() -> None:
+    """
+    Display all stored user and assistant messages.
+    """
+
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+            if message["role"] == "assistant":
+                display_sources(
+                    message.get("sources", [])
+                )
+
+
+# ---------------------------------------------------------
+# Session state
+# ---------------------------------------------------------
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+if "selected_book" not in st.session_state:
+    st.session_state.selected_book = None
+
+if "index_results" not in st.session_state:
+    st.session_state.index_results = []
+
+
+# ---------------------------------------------------------
+# Sidebar
+# ---------------------------------------------------------
+
+with st.sidebar:
+    st.header("📚 Book Library")
+
+    uploaded_files = st.file_uploader(
+        "Upload PDF books",
+        type=["pdf"],
+        accept_multiple_files=True
+    )
+
+    index_button = st.button(
+        "Save and Index Books",
+        use_container_width=True,
+        disabled=not uploaded_files
+    )
+
+    if index_button:
+        try:
+            saved_paths = save_uploaded_books(uploaded_files)
+
+            with st.spinner("Indexing books..."):
+                st.session_state.index_results = (
+                    index_uploaded_books(saved_paths)
+                )
+
+            st.success("Indexing completed.")
+
+        except Exception as error:
+            st.error(
+                f"An error occurred while indexing: {error}"
+            )
+
+    if st.session_state.index_results:
+        for result in st.session_state.index_results:
+            source = result.get("source", "Unknown file")
+            status = result.get("status", "Unknown status")
+            chunk_count = result.get("chunks_indexed", 0)
+
+            if chunk_count > 0:
+                st.success(
+                    f"{source}: {chunk_count} chunks indexed."
+                )
+            else:
+                st.warning(
+                    f"{source}: {status}"
+                )
+
+    st.divider()
+
+    available_books = find_books()
+
+    if available_books:
+        if (
+            st.session_state.selected_book
+            not in available_books
+        ):
+            st.session_state.selected_book = available_books[0]
+
+        selected_index = available_books.index(
+            st.session_state.selected_book
+        )
+
+        selected_book = st.selectbox(
+            "Select a book",
+            options=available_books,
+            index=selected_index
+        )
+
+        if selected_book != st.session_state.selected_book:
+            st.session_state.selected_book = selected_book
+            clear_chat()
+            st.rerun()
+
+        st.caption(
+            f"Selected book: "
+            f"**{st.session_state.selected_book}**"
+        )
 
     else:
+        st.session_state.selected_book = None
 
-        with st.spinner("Thinking..."):
+        st.info(
+            "Upload and index at least one PDF book."
+        )
 
-            result = ask_book(question)
+    st.divider()
 
-        st.subheader("Answer")
+    if st.button(
+        "Clear Chat",
+        use_container_width=True,
+        disabled=not st.session_state.messages
+    ):
+        clear_chat()
+        st.rerun()
 
-        st.write(result["answer"])
 
-        st.subheader("Sources")
+# ---------------------------------------------------------
+# Main chatbot interface
+# ---------------------------------------------------------
 
-        for source in result["sources"]:
+st.title("📚 Chat with Your Books")
 
-            with st.expander(
-                f"Page {source['page']} | Distance {source['distance']:.4f}"
-            ):
-                st.write(source["content"])
+if st.session_state.selected_book:
+    st.caption(
+        f"Currently chatting with "
+        f"**{st.session_state.selected_book}**"
+    )
+else:
+    st.info(
+        "Upload, index, and select a book from the sidebar "
+        "to begin asking questions."
+    )
+
+
+display_chat_history()
+
+
+question = st.chat_input(
+    "Ask a question about the selected book...",
+    disabled=st.session_state.selected_book is None
+)
+
+
+if question:
+    user_message = {
+        "role": "user",
+        "content": question
+    }
+
+    st.session_state.messages.append(user_message)
+
+    with st.chat_message("user"):
+        st.markdown(question)
+
+    with st.chat_message("assistant"):
+        try:
+            with st.spinner("Searching the book..."):
+                result = rag.ask_book(
+                    question=question,
+                    book_name=st.session_state.selected_book
+                )
+
+            answer = result["answer"]
+            sources = result["sources"]
+
+            st.markdown(answer)
+            display_sources(sources)
+
+        except Exception as error:
+            answer = (
+                "An error occurred while answering the question: "
+                f"{error}"
+            )
+            sources = []
+
+            st.error(answer)
+
+    assistant_message = {
+        "role": "assistant",
+        "content": answer,
+        "sources": sources
+    }
+
+    st.session_state.messages.append(
+        assistant_message
+    )

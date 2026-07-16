@@ -13,8 +13,7 @@ class Ingestion:
         self.embedding_model = SentenceTransformer(os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"))
         self.chroma_client = chromadb.PersistentClient(path=os.getenv("CHROMA_DB_PATH", "chroma_db"))
         collection_name = os.getenv("COLLECTION_NAME")
-        collection_metadata = os.getenv("COLLECTION_METADATA")
-        self.collection = self.chroma_client.get_or_create_collection(name=collection_name, metadata=collection_metadata)
+        self.collection = self.chroma_client.get_or_create_collection(name=collection_name, metadata={"hnsw:space": "cosine"})
         self.chunk_size = int(os.getenv("CHUNK_SIZE", 800))
         self.chunk_overlap = int(os.getenv("CHUNK_OVERLAP", 100))
 
@@ -85,7 +84,7 @@ class Ingestion:
 
         return chunks
 
-    def index_pdf(self, file_path: str) -> int:
+    def index_pdf(self, file_path: str) -> dict:
 
         pdf_path = Path(file_path)
 
@@ -141,7 +140,11 @@ class Ingestion:
 
         print(f"Indexed {pdf_path.name}: {len(chunks)} chunks")
 
-        return len(chunks)
+        return {
+            "source": pdf_path.name,
+            "chunks_indexed": len(chunks),
+            "status": "Indexed successfully"
+        }
     
     def index_pdfs(self, file_paths: list[str]) -> int:
         if not file_paths:

@@ -13,8 +13,7 @@ class Rag:
         self.embedding_model = SentenceTransformer(os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"))
         self.chroma_client = chromadb.PersistentClient(path=os.getenv("CHROMA_DB_PATH", "chroma_db"))
         collection_name = os.getenv("COLLECTION_NAME")
-        collection_metadata = os.getenv("COLLECTION_METADATA")
-        self.collection = self.chroma_client.get_or_create_collection(name=collection_name, metadata=collection_metadata)
+        self.collection = self.chroma_client.get_or_create_collection(name=collection_name, metadata={"hnsw:space": "cosine"})
         self.top_k = int(os.getenv("TOP_K", 4))
 
         self.llm_service = LLMService()
@@ -27,12 +26,19 @@ class Rag:
         if not book_name.strip():
             raise ValueError("Book name cannot be empty.")
 
-        collection_size = self.collection.count()
+        book_records = self.collection.get(
+            where={"source": book_name},
+            include=[]
+        )
 
-        if collection_size == 0:
-            raise ValueError("No PDF has been indexed yet.")
+        book_chunk_count = len(book_records["ids"])
 
-        top_k = min(self.top_k, collection_size)
+        if book_chunk_count == 0:
+            raise ValueError(
+                f"No indexed chunks were found for '{book_name}'."
+            )
+
+        top_k = min(self.top_k, book_chunk_count)
 
         question_embedding = self.embedding_model.encode(
             question,
@@ -43,7 +49,7 @@ class Rag:
             query_embeddings=[question_embedding],
             n_results=top_k,
             include=["documents", "metadatas", "distances"],
-            where={"metadata": {"source": book_name}}
+            where={"source": book_name}
         )
 
         retrieved_chunks = []
