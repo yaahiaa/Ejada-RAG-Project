@@ -9,174 +9,134 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-embedding_model = SentenceTransformer(os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"))
+class Ingestion:
+    def __init__(self):
+        self.embedding_model = SentenceTransformer(os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"))
+        self.chroma_client = chromadb.PersistentClient(path=os.getenv("CHROMA_DB_PATH", "chroma_db"))
+        self.collection = self.chroma_client.get_or_create_collection(name="books",metadata={"hnsw:space": "cosine"})
+        self.chunk_size = int(os.getenv("CHUNK_SIZE", 800))
+        self.chunk_overlap = int(os.getenv("CHUNK_OVERLAP", 100))
 
-chroma_client = chromadb.PersistentClient(path=os.getenv("CHROMA_DB_PATH", "chroma_db"))
+    def extract_text(self, file_path: str) -> list[dict]:
+        pages = []
 
-collection = chroma_client.get_or_create_collection(name="books",metadata={"hnsw:space": "cosine"})
+        with pymupdf.open(file_path) as doc:
+            for page_number, page in enumerate(doc, start=1):
+                text = page.get_text().strip()
 
-CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", 800))
-CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", 100))
-TOP_K = int(os.getenv("TOP_K", 4))
+                if text:
+                    pages.append({
+                        "page": page_number,
+                        "content": text
+                    })
 
-def extract_text(file_path: str) -> list[dict]:
-    pages = []
+        return pages
 
-    with pymupdf.open(file_path) as doc:
-        for page_number, page in enumerate(doc, start=1):
-            text = page.get_text().strip()
+    def chunk_text(self, pages: list[dict]) -> list[dict]:
+    
+        chunks = []
+        chunk_id = 0
 
-            if text:
-                pages.append({
-                    "page": page_number,
-                    "content": text
-                })
+        for page in pages:
+            page_number = page["page"]
+            text = page["content"].strip()
 
-    return pages
+            if not text:
+                continue
 
-def chunk_text(pages: list[dict],chunk_size: int = CHUNK_SIZE,overlap: int = CHUNK_OVERLAP) -> list[dict]:
-   
-    chunks = []
-    chunk_id = 0
+            start = 0
 
-    for page in pages:
-        page_number = page["page"]
-        text = page["content"].strip()
+            while start < len(text):
+                end = min(start + self.chunk_size, len(text))
+                chunk = text[start:end]
 
-        if not text:
-            continue
+                # Try to finish the chunk at a natural boundary.
+                if end < len(text):
+                    possible_breaks = [
+                        chunk.rfind("\n\n"),
+                        chunk.rfind(". "),
+                        chunk.rfind("? "),
+                        chunk.rfind("! "),
+                        chunk.rfind("\n"),
+                    ]
 
-        start = 0
+                    last_break = max(possible_breaks)
 
-        while start < len(text):
-            end = min(start + chunk_size, len(text))
-            chunk = text[start:end]
+                    # Avoid producing an excessively short chunk.
+                    if last_break >= self.chunk_size // 2:
+                        end = start + last_break + 1
+                        chunk = text[start:end]
 
-            # Try to finish the chunk at a natural boundary.
-            if end < len(text):
-                possible_breaks = [
-                    chunk.rfind("\n\n"),
-                    chunk.rfind(". "),
-                    chunk.rfind("? "),
-                    chunk.rfind("! "),
-                    chunk.rfind("\n"),
-                ]
+                chunk = chunk.strip()
 
-                last_break = max(possible_breaks)
+                if chunk:
+                    chunks.append({
+                        "chunk_id": chunk_id,
+                        "page": page_number,
+                        "content": chunk
+                    })
+                    chunk_id += 1
 
-                # Avoid producing an excessively short chunk.
-                if last_break >= chunk_size // 2:
-                    end = start + last_break + 1
-                    chunk = text[start:end]
+                if end >= len(text):
+                    break
 
-            chunk = chunk.strip()
+                start = end - self.chunk_overlap
 
-            if chunk:
-                chunks.append({
-                    "chunk_id": chunk_id,
-                    "page": page_number,
-                    "content": chunk
-                })
-                chunk_id += 1
+        return chunks
 
-            if end >= len(text):
-                break
+    def index_pdf(self, file_path: str) -> int:
 
-            start = end - overlap
+        pdf_path = Path(file_path)
 
-    return chunks
+        if not pdf_path.exists():
+            raise FileNotFoundError(f"PDF not found: {file_path}")
 
-def index_pdf(file_path: str) -> int:
+        if pdf_path.suffix.lower() != ".pdf":
+            raise ValueError("Only PDF files are supported.")
 
-    pdf_path = Path(file_path)
+        pages = self.extract_text(str(pdf_path))
+        chunks = self.chunk_text(pages)
 
-    if not pdf_path.exists():
-        raise FileNotFoundError(f"PDF not found: {file_path}")
+        if not chunks:
+            print(f"No readable text found in: {pdf_path.name}")
+            return 0
 
-    if pdf_path.suffix.lower() != ".pdf":
-        raise ValueError("Only PDF files are supported.")
+        texts = [chunk["content"] for chunk in chunks]
 
-    pages = extract_text(str(pdf_path))
-    chunks = chunk_text(pages)
+        embeddings = self.embedding_model.encode(
+            texts,
+            batch_size=32,
+            show_progress_bar=True,
+            normalize_embeddings=True
+        ).tolist()
 
-    if not chunks:
-        print(f"No readable text found in: {pdf_path.name}")
-        return 0
+        file_hash = hashlib.sha256(
+            pdf_path.read_bytes()
+        ).hexdigest()[:16]
 
-    texts = [chunk["content"] for chunk in chunks]
+        ids = [
+            f"{file_hash}_chunk_{chunk['chunk_id']}"
+            for chunk in chunks
+        ]
 
-    embeddings = embedding_model.encode(
-        texts,
-        batch_size=32,
-        show_progress_bar=True,
-        normalize_embeddings=True
-    ).tolist()
+        metadatas = [
+            {
+                "source": pdf_path.name,
+                "page": chunk["page"],
+                "chunk_id": chunk["chunk_id"],
+                "file_hash": file_hash
+            }
+            for chunk in chunks
+        ]
 
-    file_hash = hashlib.sha256(
-        pdf_path.read_bytes()
-    ).hexdigest()[:16]
+        self.collection.upsert(
+            ids=ids,
+            embeddings=embeddings,
+            documents=texts,
+            metadatas=metadatas
+        )
 
-    ids = [
-        f"{file_hash}_chunk_{chunk['chunk_id']}"
-        for chunk in chunks
-    ]
+        print(f"Indexed {pdf_path.name}: {len(chunks)} chunks")
 
-    metadatas = [
-        {
-            "source": pdf_path.name,
-            "page": chunk["page"],
-            "chunk_id": chunk["chunk_id"],
-            "file_hash": file_hash
-        }
-        for chunk in chunks
-    ]
+        return len(chunks)
 
-    collection.upsert(
-        ids=ids,
-        embeddings=embeddings,
-        documents=texts,
-        metadatas=metadatas
-    )
-
-    print(f"Indexed {pdf_path.name}: {len(chunks)} chunks")
-
-    return len(chunks)
-
-def retrieve_chunks(question: str, top_k: int = TOP_K) -> list[dict]:
-    if not question.strip():
-        raise ValueError("Question cannot be empty.")
-
-    collection_size = collection.count()
-
-    if collection_size == 0:
-        raise ValueError("No PDF has been indexed yet.")
-
-    top_k = min(top_k, collection_size)
-
-    question_embedding = embedding_model.encode(
-        question,
-        normalize_embeddings=True
-    ).tolist()
-
-    results = collection.query(
-        query_embeddings=[question_embedding],
-        n_results=top_k,
-        include=["documents", "metadatas", "distances"]
-    )
-
-    retrieved_chunks = []
-
-    for document, metadata, distance in zip(
-        results["documents"][0],
-        results["metadatas"][0],
-        results["distances"][0]
-    ):
-        retrieved_chunks.append({
-            "content": document,
-            "page": metadata["page"],
-            "source": metadata["source"],
-            "chunk_id": metadata["chunk_id"],
-            "distance": distance
-        })
-
-    return retrieved_chunks
