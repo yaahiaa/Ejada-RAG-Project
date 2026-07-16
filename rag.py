@@ -20,9 +20,12 @@ class Rag:
         self.llm_service = LLMService()
 
 
-    def retrieve_chunks(self, question: str) -> list[dict]:
+    def retrieve_chunks(self, question: str, book_name: str) -> list[dict]:
         if not question.strip():
             raise ValueError("Question cannot be empty.")
+        
+        if not book_name.strip():
+            raise ValueError("Book name cannot be empty.")
 
         collection_size = self.collection.count()
 
@@ -39,7 +42,8 @@ class Rag:
         results = self.collection.query(
             query_embeddings=[question_embedding],
             n_results=top_k,
-            include=["documents", "metadatas", "distances"]
+            include=["documents", "metadatas", "distances"],
+            where={"metadata": {"source": book_name}}
         )
 
         retrieved_chunks = []
@@ -59,9 +63,9 @@ class Rag:
 
         return retrieved_chunks
 
-    def ask_book(self, question: str) -> dict:
+    def ask_book(self, question: str, book_name:str) -> dict:
 
-        retrieved_chunks = self.retrieve_chunks(question=question)
+        retrieved_chunks = self.retrieve_chunks(question=question, book_name=book_name)
 
         answer = self.llm_service.generate_answer(
             question=question,

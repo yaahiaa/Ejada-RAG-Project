@@ -3,7 +3,7 @@ from rag import Rag
 import os
 
 
-def find_pdf() -> str:
+def find_pdfs() -> list[str]:
     base_dir = os.path.dirname(os.path.abspath(__file__))
     books_dir = os.path.join(base_dir, "books")
 
@@ -20,7 +20,7 @@ def find_pdf() -> str:
         raise FileNotFoundError(
             "No PDF file was found in the books directory."
         )
-    return pdf_files[0]
+    return pdf_files
 
 def run_chat(rag: Rag) -> None:
     while True:
@@ -55,12 +55,12 @@ def run_chat(rag: Rag) -> None:
             print(f"Error while answering: {error}")
 
 def run_application() -> None:
-    pdf_path = find_pdf()
+    pdf_paths = find_pdfs()
 
     ingest = Ingestion()
     rag = Rag()
 
-    chunk_count = ingest.index_pdf(pdf_path)
+    chunk_count = ingest.index_pdfs(pdf_paths)
     run_chat(rag)
 
 def main():

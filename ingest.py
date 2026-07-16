@@ -1,5 +1,4 @@
 import os
-import json
 from pathlib import Path
 import pymupdf
 import chromadb
@@ -100,6 +99,10 @@ class Ingestion:
         if not chunks:
             print(f"No readable text found in: {pdf_path.name}")
             return 0
+        
+        self.collection.delete(
+            where={"source": pdf_path.name}
+        )
 
         texts = [chunk["content"] for chunk in chunks]
 
@@ -110,9 +113,7 @@ class Ingestion:
             normalize_embeddings=True
         ).tolist()
 
-        file_hash = hashlib.sha256(
-            pdf_path.read_bytes()
-        ).hexdigest()[:16]
+        file_hash = hashlib.sha256(pdf_path.read_bytes()).hexdigest()[:16]
 
         ids = [
             f"{file_hash}_chunk_{chunk['chunk_id']}"
@@ -139,4 +140,25 @@ class Ingestion:
         print(f"Indexed {pdf_path.name}: {len(chunks)} chunks")
 
         return len(chunks)
+    
+    def index_pdfs(self, file_paths: list[str]) -> int:
+        if not file_paths:
+            raise ValueError("No PDF files were provided.")
+
+        results = []
+
+        for file_path in file_paths:
+            try:
+                result = self.index_pdf(file_path)
+
+            except Exception as error:
+                result = {
+                    "source": os.path.basename(file_path),
+                    "chunks_indexed": 0,
+                    "status": f"Failed: {error}"
+                }
+
+            results.append(result)
+
+        return results
 
