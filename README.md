@@ -2,6 +2,7 @@
 
 A simple Retrieval-Augmented Generation (RAG) application that allows users to upload a PDF book, ask questions about its content, and receive answers grounded in the uploaded document.
 
+try it yourself: https://ejada-rag-project-o4zj3z4xeqh9zbtqfuapa4.streamlit.app/
 
 ---
 
