@@ -4,4 +4,3 @@ sentence-transformers
 groq
 PyMuPDF
 python-dotenv
-torch
