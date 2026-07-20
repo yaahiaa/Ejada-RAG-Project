@@ -2,7 +2,6 @@
 
 A simple Retrieval-Augmented Generation (RAG) application that allows users to upload a PDF book, ask questions about its content, and receive answers grounded in the uploaded document.
 
-The project implements the RAG pipeline from scratch without using LangChain.
 
 ---
 
@@ -73,30 +72,8 @@ Install the project dependencies:
 uv sync
 ```
 
-Create a `.env` file in the project root:
+Create a `.env` file in the project root, copy the variables from `.env.example` and configure.
 
-```env
-# Groq
-GROQ_API_KEY=your_groq_api_key
-GROQ_MODEL=llama-3.3-70b-versatile
-
-# Embedding
-EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
-
-# ChromaDB
-CHROMA_DB_PATH=chroma_db
-COLLECTION_NAME=books
-
-# Chunking
-CHUNK_SIZE=800
-CHUNK_OVERLAP=100
-
-# Retrieval
-TOP_K=4
-
-# Books
-BOOKS_DIR=books
-```
 
 Run the application:
 
